@@ -1,0 +1,32 @@
+# Quick smoke config for LSTM training (small, fast)
+
+data:
+  raw_path: "data/raw/BGL_structured.csv"
+  processed_dir: "data/processed"
+  window_size: 10
+  step_size: 5
+  train_ratio: 0.6
+  val_ratio: 0.2
+  random_seed: 42
+
+lstm_ae:
+  mode: causal_transformer
+  embedding_dim: 64
+  hidden_dim: 32
+  num_layers: 2
+  dropout: 0.3
+  num_heads: 4
+  epochs: 1
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  early_stopping_patience: 2
+  threshold_pct: 95
+
+evaluation:
+  metrics: ["precision", "recall", "f1", "auc"]
+  output_dir: "outputs/results"
+  checkpoint_dir: "outputs/checkpoints"
+  log_dir: "outputs/logs"
+
+# IF and feature_engineering not needed for this smoke run
