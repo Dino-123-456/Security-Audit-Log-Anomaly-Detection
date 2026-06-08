@@ -1,5 +1,4 @@
 # configs/experiment_config.yaml
-
 # ==================== 数据配置 ====================
 data:
   raw_path: "data/raw/BGL_structured.csv"
@@ -13,12 +12,12 @@ data:
 # ==================== Isolation Forest 配置 ====================
 if_model:
   n_estimators: 200
-  max_samples: 0.8          # 每次建树采样 80% 的样本
-  contamination: 0.08       # 预期异常比例（与数据集 8.15% 匹配）
-  max_features: 0.8         # 【新增】每次建树采样 80% 的特征，增强多样性
+  max_samples: 0.8          
+  contamination: 0.08       
+  max_features: 0.8         
   bootstrap: false
-  n_jobs: 1                 # WSL2 下默认单进程更稳，必要时再手动提高
-  tfidf_max_features: 500   # 降低稀疏维度，优先保证稳定性
+  n_jobs: 1                 
+  tfidf_max_features: 500   
   calibration_mode: "precision_at_recall_floor"
   calibration_min_recall: 0.98
 
@@ -32,10 +31,10 @@ lstm_ae:
   num_heads: 4
   epochs: 30
   batch_size: 256
-  learning_rate: 0.001       # 【统一】原lr改为learning_rate，与代码及其他字段风格一致
-  weight_decay: 0.0001            # 【新增】显式声明，避免get默认值隐藏问题
+  learning_rate: 0.001       
+  weight_decay: 0.0001            
   early_stopping_patience: 3
-  threshold_pct: 95      # 正常样本的第 95 百分位作为阈值
+  threshold_pct: 95      
 
 # ==================== 特征工程配置 (IF路线专用) ====================
 feature_engineering:
@@ -43,6 +42,18 @@ feature_engineering:
   max_features: 500
   use_entropy: true
   use_failure_rate: true
+
+# ==================== Hypersphere (One-Class) 配置 ====================
+hypersphere:
+  embedding_dim: 64
+  n_heads: 4
+  num_layers: 2
+  proj_dim: 32
+  epochs: 20              
+  batch_size: 256         
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  early_stopping_patience: 5  # 连续 N 个 epoch loss 不下降则停止
 
 # ==================== 评估与输出配置 ====================
 evaluation:

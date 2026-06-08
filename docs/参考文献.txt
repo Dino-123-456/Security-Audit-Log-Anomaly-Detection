@@ -8,3 +8,9 @@
 [8]Lu, Y., Jin, X., Chen, J., Liu, D., & Geng, G. (2024). F-SE-LSTM: A Time Series Anomaly Detection Method with Frequency Domain Information. ArXiv, abs/2412.02474.
 [9]L. Chen, Y. Xu, M. Li, B. Hu, H. Guo and Z. Liu, "Privacy-Preserving Lightweight Time-Series Anomaly Detection for Resource-Limited Industrial IoT Edge Devices," in IEEE Transactions on Industrial Informatics, vol. 21, no. 6, pp. 4435-4446, June 2025, doi: 10.1109/TII.2025.3538127.
 [10]Nipa, N.A., Bouguila, N., & Patterson, Z. (2025). A Comparative Study of Log-Based Anomaly Detection Methods in Real-World System Logs. International Conference on Internet of Things, Big Data and Security.
+[11]YUAN Ziyi,ZHANG Haoxing,ZHANG Yuanyuan,WU Gaofei,ZHANG Yuqing.Few-Shot Log Anomaly Detection via Large Language Models[J].Journal of Cyber Security,2024,9(6):17-27
+[12]YIN Chunyong, ZHANG Xiaohu. Log anomaly detection based on Transformer and Text-CNN[J]. Computer Engineering & Science, 2025, 47(3): 448-458.
+[13]Zhou, Qihang, et al. AnomalyCLIP: Object-agnostic Prompt Learning for Zero-shot Anomaly Detection. Version v3, arXiv, 3 Dec. 2023, doi:10.48550/arXiv.2310.18961.
+
+[14]Adam J. Oliner, Jon Stearley. What Supercomputers Say: A Study of Five System Logs, in Proc. of IEEE/IFIP International Conference on Dependable Systems and Networks (DSN), 2007.
+[15]Jieming Zhu, Shilin He, Pinjia He, Jinyang Liu, Michael R. Lyu. Loghub: A Large Collection of System Log Datasets for AI-driven Log Analytics. IEEE International Symposium on Software Reliability Engineering (ISSRE), 2023.

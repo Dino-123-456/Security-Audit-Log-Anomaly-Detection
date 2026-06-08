@@ -1,102 +1,113 @@
-# data/data_loader.py
+import os
+import logging
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from typing import Dict
-import logging
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
 class BGLDataLoader:
-    """BGL日志数据加载器，负责解析、窗口切分、缓存读写"""
-    def __init__(self, config: dict):
-        self.config = config['data']
-        self.raw_path = Path(self.config['raw_path'])
-        self.processed_dir = Path(self.config['processed_dir'])
-        self.processed_dir.mkdir(parents=True, exist_ok=True)
+    """
+    BGL 数据集加载器
+    核心特性：严格时序划分 + 防词典泄露 (Vocab Leakage Prevention)
+    """
+    def __init__(self, config: Dict[str, Any]):
+        data_cfg = config.get('data', {})
         
-        self.window_size = self.config['window_size']
-        self.step_size = self.config['step_size']
-        self.train_ratio = self.config['train_ratio']
-        self.val_ratio = self.config['val_ratio']
-        self.seed = self.config['random_seed']
-
-    @property
-    def cache_path(self) -> Path:
-        # 【修改】移除 _dual 后缀，回归最纯粹的缓存命名
-        return self.processed_dir / (
-            f"BGL_structured_ws{self.window_size}"
-            f"_ss{self.step_size}"
-            f"_tr{self.train_ratio}"
-            f"_vr{self.val_ratio}_shuffled_cache.npz"
-        )
+        self.raw_path = data_cfg.get('raw_path', 'data/BGL/BGL.log_structured.csv')
+        self.cache_dir = data_cfg.get('cache_dir', 'data/cache')
+        os.makedirs(self.cache_dir, exist_ok=True)
+        
+        # 【修复】使用新的缓存文件名，强制废弃旧缓存
+        self.cache_path = os.path.join(self.cache_dir, 'bgl_data_timesplit_unk.npz')
+        
+        self.window_size = data_cfg.get('window_size', 10)
+        self.step_size = data_cfg.get('step_size', 1)
+        self.train_ratio = data_cfg.get('train_ratio', 0.8)
+        self.val_ratio = data_cfg.get('val_ratio', 0.1)
+        self.seed = data_cfg.get('seed', 42)
 
     def load(self) -> Dict[str, np.ndarray]:
-        """加载数据，优先读缓存；缓存缺失或过期时自动重建"""
-        if self.cache_path.exists():
-            logger.info(f"[DataLoader] 从缓存加载: {self.cache_path}")
-            data = np.load(self.cache_path, allow_pickle=True)
-            
-            # 【修改】校验缓存完整性 (仅包含单标签 y)
-            required_keys = {
-                'X_train', 'y_train',
-                'X_val', 'y_val',
-                'X_test', 'y_test', 
-                'vocab_size',
-                'window_failure_rate'
-            }
-            missing = required_keys - set(data.files)
-            if missing:
-                logger.warning(f"[DataLoader] 缓存缺少字段 {missing}，将重新生成")
-                self.cache_path.unlink()
-            else:
-                return dict(data)
+        """加载数据，优先读取缓存，若缓存缺失字段则自动更新"""
+        required_fields = {
+            'X_train', 'y_train', 'X_val', 'y_val', 'X_test', 'y_test', 
+            'vocab_size', 'window_failure_rate_train', 'window_failure_rate_val', 'window_failure_rate_test'
+        }
 
-        logger.info("[DataLoader] 缓存不存在或不完整，开始构建...")
-        return self._build_and_cache()
+        if os.path.exists(self.cache_path):
+            logger.info(f"[DataLoader] 发现缓存文件: {self.cache_path}")
+            cache_data = dict(np.load(self.cache_path, allow_pickle=True))
+            
+            missing_fields = required_fields - set(cache_data.keys())
+            if missing_fields:
+                logger.warning(f"[DataLoader] 缓存缺少字段 {missing_fields}，将触发安全更新...")
+                cache_data = self._update_cache(cache_data)
+                
+            logger.info("[DataLoader] 缓存加载成功 (严格时序划分 + UNK机制)。")
+            return cache_data
+        else:
+            logger.info(f"[DataLoader] 未找到缓存，开始从原始 CSV 构建...")
+            return self._build_and_cache()
 
     def _build_and_cache(self) -> Dict[str, np.ndarray]:
-        """从原始CSV构建窗口数据并写入缓存"""
+        """从原始CSV构建窗口数据并写入缓存 (防词典泄露版)"""
+        if not os.path.exists(self.raw_path):
+            raise FileNotFoundError(f"找不到原始数据文件: {self.raw_path}")
+            
         df = pd.read_csv(self.raw_path)
+        logger.info(f"[DataLoader] 读取原始日志: {len(df)} 条")
         
         event_ids = df['EventId'].astype(str).values
         labels = df['Label'].apply(lambda x: 1 if x != '-' else 0).values.astype(np.int8)
         
-        unique_events = sorted(set(event_ids))
-        event2idx = {e: i + 1 for i, e in enumerate(unique_events)}
-        vocab_size = len(unique_events) + 1  # 0 留给 padding
-        
-        sequences, seq_labels = [], []
+        raw_sequences, seq_labels = [], []
         window_failure_rates = []
         
+        # 1. 严格按时间顺序滑动窗口 (先保留原始 EventId 字符串)
         for start in range(0, len(event_ids) - self.window_size + 1, self.step_size):
             window_events = event_ids[start:start + self.window_size]
             window_labels = labels[start:start + self.window_size]
             
-            # 【统一标签】窗口内任一异常即为 1 (完美契合 Masked+MaxPooling 及所有传统模型)
             label = int(window_labels.max())
-            
-            seq = [event2idx.get(e, 0) for e in window_events]
-            sequences.append(seq)
+            raw_sequences.append(window_events)
             seq_labels.append(label)
-            # 窗口内的异常率（基于原始行级标签计算），用于特征工程
-            failure_rate = window_labels.mean()
-            window_failure_rates.append(failure_rate)
+            window_failure_rates.append(window_labels.mean())
             
-        X = np.array(sequences, dtype=np.int32)
+        raw_X = np.array(raw_sequences, dtype=object)
         y = np.array(seq_labels, dtype=np.int8)
         window_failure_rates = np.array(window_failure_rates, dtype=np.float32)
-
-        # 全局 Shuffle
-        n = len(X)
-        rng = np.random.default_rng(self.seed)
-        indices = rng.permutation(n)
-        X = X[indices]
-        y = y[indices]
-        window_failure_rates = window_failure_rates[indices]
-
+        
+        n = len(raw_X)
         train_end = int(n * self.train_ratio)
         val_end = int(n * (self.train_ratio + self.val_ratio))
+        
+        # 【核心修复 1】仅使用训练集的窗口来构建词典！
+        train_raw_X = raw_X[:train_end]
+        # 展平训练集的所有 EventId 并去重
+        train_unique_events = sorted(set(e for seq in train_raw_X for e in seq))
+        
+        # 0: <PAD>, 1: <UNK>, 2...: 正常 EventId
+        event2idx = {e: i + 2 for i, e in enumerate(train_unique_events)}
+        vocab_size = len(train_unique_events) + 2 
+        
+        logger.info(f"[DataLoader] 训练集词汇量: {len(train_unique_events)} | 总 vocab_size: {vocab_size}")
+        
+        # 2. 将所有数据映射为 Index，未知词映射为 1 (<UNK>)
+        def map_to_idx(seq):
+            return [event2idx.get(e, 1) for e in seq] # 1 是 <UNK>
+
+        X = np.array([map_to_idx(seq) for seq in raw_X], dtype=np.int32)
+        
+        logger.info("="*50)
+        logger.info(f"[DataLoader] ⚠️ 采用严格时序划分 + 防词典泄露，已禁用全局 Shuffle。")
+        logger.info(f"[DataLoader] 训练集: 0 ~ {train_end} | 验证集: {train_end} ~ {val_end} | 测试集: {val_end} ~ {n}")
+        
+        # 统计测试集中的 UNK 比例，用于汇报时展示模型的泛化难度
+        test_X = X[val_end:]
+        total_test_tokens = test_X.size
+        unk_test_tokens = np.sum(test_X == 1)
+        logger.info(f"[DataLoader] 测试集中 <UNK> (未知日志) 比例: {unk_test_tokens / total_test_tokens:.2%}")
+        logger.info("="*50)
         
         result = {
             'X_train': X[:train_end], 'y_train': y[:train_end],
@@ -109,7 +120,35 @@ class BGLDataLoader:
         }
         
         np.savez_compressed(self.cache_path, **result)
-        logger.info(f"[DataLoader] 缓存已保存: {self.cache_path} | vocab_size={vocab_size}")
+        logger.info(f"[DataLoader] 缓存已保存: {self.cache_path}")
         logger.info(f"[DataLoader] 全局异常比例: {y.mean():.2%}")
         
         return result
+
+    def _update_cache(self, existing_cache: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        """安全更新缓存：补充缺失字段"""
+        logger.info("[DataLoader] 开始重新计算缺失字段...")
+        if not os.path.exists(self.raw_path):
+            raise FileNotFoundError(f"更新缓存需要原始数据文件: {self.raw_path}")
+            
+        df = pd.read_csv(self.raw_path)
+        labels = df['Label'].apply(lambda x: 1 if x != '-' else 0).values.astype(np.int8)
+        
+        window_failure_rates = []
+        for start in range(0, len(labels) - self.window_size + 1, self.step_size):
+            window_labels = labels[start:start + self.window_size]
+            window_failure_rates.append(window_labels.mean())
+            
+        window_failure_rates = np.array(window_failure_rates, dtype=np.float32)
+        
+        n = len(window_failure_rates)
+        train_end = int(n * self.train_ratio)
+        val_end = int(n * (self.train_ratio + self.val_ratio))
+        
+        existing_cache['window_failure_rate_train'] = window_failure_rates[:train_end]
+        existing_cache['window_failure_rate_val'] = window_failure_rates[train_end:val_end]
+        existing_cache['window_failure_rate_test'] = window_failure_rates[val_end:]
+        
+        np.savez_compressed(self.cache_path, **existing_cache)
+        logger.info(f"[DataLoader] 缓存已更新并保存: {self.cache_path}")
+        return existing_cache

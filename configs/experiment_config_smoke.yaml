@@ -1,5 +1,7 @@
-# Quick smoke config for LSTM training (small, fast)
+# configs/experiment_config_smoke.yaml
+# Quick smoke config for Hypersphere & LSTM training (small, fast)
 
+# ==================== 数据配置 ====================
 data:
   raw_path: "data/raw/BGL_structured.csv"
   processed_dir: "data/processed"
@@ -9,6 +11,7 @@ data:
   val_ratio: 0.2
   random_seed: 42
 
+# ==================== LSTM-Autoencoder 配置 ====================
 lstm_ae:
   mode: causal_transformer
   embedding_dim: 64
@@ -23,10 +26,20 @@ lstm_ae:
   early_stopping_patience: 2
   threshold_pct: 95
 
+# ==================== Hypersphere (One-Class) 配置 ====================
+hypersphere:
+  embedding_dim: 64
+  n_heads: 4
+  num_layers: 2
+  proj_dim: 32
+  epochs: 1               # 【烟测专用】仅跑 1 个 Epoch 验证流程
+  batch_size: 32          # 【烟测专用】小 Batch Size
+  learning_rate: 0.001
+  weight_decay: 0.0001
+
+# ==================== 评估与输出配置 ====================
 evaluation:
   metrics: ["precision", "recall", "f1", "auc"]
   output_dir: "outputs/results"
   checkpoint_dir: "outputs/checkpoints"
   log_dir: "outputs/logs"
-
-# IF and feature_engineering not needed for this smoke run
