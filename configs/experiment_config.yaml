@@ -29,7 +29,7 @@ lstm_ae:
   num_layers: 2
   dropout: 0.3
   num_heads: 4
-  epochs: 30
+  epochs: 10
   batch_size: 256
   learning_rate: 0.001       
   weight_decay: 0.0001            

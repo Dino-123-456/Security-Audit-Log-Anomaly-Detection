@@ -1,4 +1,4 @@
-# models/lstm_v6_detector.py
+# models/transformer_v6_detector.py
 """
 LSTM v6: 更强的因果序列模型。
 

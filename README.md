@@ -23,7 +23,7 @@
   * **现象**：随机划分下，模型 AUC 轻易达到 0.90+。
   * **根因**：BGL 日志具有极强的时间局部性和重复性。同一种系统报错（异常）或同一种启动流程（正常）会在相邻时间段内密集出现。随机划分会导致**训练集和测试集包含了大量时间上相邻、内容几乎相同的日志**。模型根本不需要学习“异常模式”，只需“死记硬背”训练集里的具体序列，就能在测试集拿高分。这在工业界被称为“未来信息泄露”。
 * **✅ 最终方案：严格时序划分 (Time-based Split)**
-  * 我们强制按照时间戳排序，将前 70% 的日志作为训练集，后 30% 作为测试集。
+  * 我们强制按照时间戳排序，采用严格时序划分：前 80% 作为训练集，中间 10% 作为验证集，最后 10% 作为测试集”。
   * **代价与收获**：这一改动导致所有模型的 AUC 瞬间暴跌（因为测试集充满了训练集没见过的“新概念/新正常状态”），但却逼迫我们直面真实的**概念漂移（Concept Drift）** 问题，从而引出了后续评估范式的彻底重构。
 
 ### 阶段一：传统基线与早期序列建模的“滑铁卢” (v1 之前)
@@ -166,37 +166,38 @@ python -m experiments.train_hypersphere --config configs/experiment_config_smoke
 
 ```text
 Security-Audit-Log-Anomaly-Detection/
-├── README.md                 # 项目说明与踩坑复盘
-├── configs/                  # 核心训练与评估配置 (YAML)
-│   ├── experiment_config.yaml       # 完整训练配置 (含 IF, LSTM, Hypersphere)
+├── README.md # 项目说明与踩坑复盘
+├── configs/
+│   ├── experiment_config.yaml # 完整训练配置 (含 IF, LSTM, Hypersphere)
 │   └── experiment_config_smoke.yaml # 快速冒烟测试配置
-├── data/                     # 数据加载、缓存与预处理
-│   ├── raw/                  # 原始 BGL 日志及解析后的 CSV
-│   ├── processed/            # 时序划分后的缓存数据
-│   └── data_loader.py        # 数据加载与防作弊时序划分逻辑
-├── docs/                     # 文档与参考文献
-│   ├── references/           # 参考文献目录
+├── data/
+│   ├── raw/ # 原始 BGL 日志及解析后的 CSV
+│   ├── processed/ # 时序划分后的缓存数据
+│   └── data_loader.py # 数据加载与防作弊时序划分逻辑
+├── docs/
+│   ├── references/
 │   └── 参考文献.txt
-├── experiments/              # 核心训练与评估入口脚本
-│   ├── train_if.py           # IF 训练入口
-│   ├── train_lstm_ae.py      # LSTM 训练入口
-│   └── train_hypersphere.py  # v12 核心训练脚本
-├── models/                   # 模型网络结构定义
-│   ├── if_detector.py        # Isolation Forest 封装
-│   ├── lstm_ae_detector.py   # LSTM/Transformer 序列模型封装
-│   ├── lstm_v5_detector.py   # [历史存档] v5 单向 LSTM + NLL
-│   ├── lstm_v6_detector.py   # [历史存档] v6 单向 Transformer + NLL
+├── experiments/ # 🔧 核心训练脚本 (已更新)
+│   ├── train_if.py # IF 训练入口
+│   ├── train_lstm_v4.py # 【更新】修复 yaml.safe_load 错误，集成 Top-K 评估
+│   ├── train_lstm_v5.py # 【更新】修复 yaml.safe_load 错误，集成 Top-K 评估
+│   └── train_hypersphere_v6.py # v12 核心训练脚本
+├── models/
+│   ├── if_detector.py # Isolation Forest 封装
+│   ├── lstm_ae_detector.py # LSTM/序列模型封装
+│   ├── lstm_v5_detector.py # [历史存档] v5 单向 LSTM + NLL
+│   ├── transformer_v6_detector.py # [历史存档] v6 单向 Transformer + NLL
 │   └── hypersphere_detector.py # [当前版本] v12 混合多视角架构
-├── outputs/                  # 训练产物 (日志、最终模型权重、评估结果)
+├── outputs/ # 训练产物 (日志、最终模型权重、评估结果)
 │   ├── checkpoints/
 │   ├── logs/
 │   └── results/
-├── scripts/                  # 数据解析脚本 (Drain3)
-│   └── parse_bgl.py
-└── utils/                    # 特征工程、日志、评估指标 (含 Precision@K)
+├── scripts/
+│   └── parse_bgl.py # 数据解析脚本 (Drain3)
+└── utils/
     ├── feature_engineering.py
     ├── logger.py
-    └── metrics.py
+    └── metrics.py 
 ```
 
 ---
@@ -207,4 +208,17 @@ Security-Audit-Log-Anomaly-Detection/
 为避免长篇列表影响阅读体验，完整的参考文献列表（包含 Isolation Forest、DeepLog、LogBERT 及最新的 Contrastive Learning 应用）已整理至独立文档：
 
 👉 **[点击查看完整参考文献列表](docs/参考文献.txt)**
+
+## 📊 关键实验结果对比 (基于 BGL 数据集)
+
+为了直观展示项目演进的成效，以下是核心版本在**严格时序划分（Time-based Split）**下的测试集表现。
+*(注：AUC 反映全局排序能力，P@K 反映工业界最关注的 Top-K 告警准确率)*
+
+| 模型版本 | 核心范式 | AUC | P@100 | P@500 | 关键洞察 |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Isolation Forest (IF)** | TF-IDF + 无监督 | 0.55 | 0.04 | 0.07 | **传统基线失效**：高维稀疏日志特征下，无法捕捉时序依赖，效果接近随机猜测。 |
+| **v5 (LSTM Autoregressive)** | 单向 LSTM + NLL | 0.62 | 0.04 | 0.07 | **深度学习的局限**：受限于“概念漂移”和短序列冷启动，虽然优于 IF，但 AUC 依然较低，Top-K 效果未达工业级要求。 |
+| **v12 (混合多视角)** | Transformer + 稀有度惩罚 | **0.44** | **0.67** | **0.736** | **最终落地方案**：**不追求高 AUC**，而是通过统计视角（Token 稀有度）精准狙击 Top-K 告警，解决了告警疲劳问题。 |
+
+> **💡 结论**：单纯增加模型深度（如 v5）无法解决日志时序漂移问题。v12 通过引入统计视角的“混合架构”，在 P@500 指标上相比 v5 提升了 **10 倍以上**，实现了从“学术玩具”到“工业利器”的跨越。
 
