@@ -147,14 +147,14 @@ python -m experiments.train_lstm_ae --config configs/experiment_config.yaml
 python -m experiments.train_lstm_ae --config configs/experiment_config_smoke.yaml
 ```
 
-#### 路线 C：最终方案 混合多视角架构 (v12 Hypersphere) 🌟
+#### 路线 C：最终方案 混合多视角架构 (v12 ) 🌟
 *结合监督对比学习与统计稀有度惩罚的工业级落地方案。*
 ```bash
 # 完整训练 (推荐)
-python -m experiments.train_hypersphere --config configs/experiment_config.yaml
+python -m experiments.train_multi_view --config configs/experiment_config.yaml
 
 # 快速冒烟测试
-python -m experiments.train_hypersphere --config configs/experiment_config_smoke.yaml
+python -m experiments.train_multi_view --config configs/experiment_config_smoke.yaml
 ```
 
 ### Step 4: 结果评估
@@ -168,7 +168,7 @@ python -m experiments.train_hypersphere --config configs/experiment_config_smoke
 Security-Audit-Log-Anomaly-Detection/
 ├── README.md # 项目说明与踩坑复盘
 ├── configs/
-│   ├── experiment_config.yaml # 完整训练配置 (含 IF, LSTM, Hypersphere)
+│   ├── experiment_config.yaml # 完整训练配置 (含 IF, LSTM,  Multi-View)
 │   └── experiment_config_smoke.yaml # 快速冒烟测试配置
 ├── data/
 │   ├── raw/ # 原始 BGL 日志及解析后的 CSV
@@ -181,13 +181,14 @@ Security-Audit-Log-Anomaly-Detection/
 │   ├── train_if.py # IF 训练入口
 │   ├── train_lstm_v4.py # 【更新】修复 yaml.safe_load 错误，集成 Top-K 评估
 │   ├── train_lstm_v5.py # 【更新】修复 yaml.safe_load 错误，集成 Top-K 评估
-│   └── train_hypersphere_v6.py # v12 核心训练脚本
+│   ├── transformer_v6_detector.py # [历史存档] v6 单向 Transformer 训练入口
+|   └── train_multi_view.py  # v12混合多视角架构训练
 ├── models/
 │   ├── if_detector.py # Isolation Forest 封装
 │   ├── lstm_ae_detector.py # LSTM/序列模型封装
 │   ├── lstm_v5_detector.py # [历史存档] v5 单向 LSTM + NLL
 │   ├── transformer_v6_detector.py # [历史存档] v6 单向 Transformer + NLL
-│   └── hypersphere_detector.py # [当前版本] v12 混合多视角架构
+│   └── multi_view_detector.py # [当前版本] v12 混合多视角架构
 ├── outputs/ # 训练产物 (日志、最终模型权重、评估结果)
 │   ├── checkpoints/
 │   ├── logs/
